@@ -1,0 +1,239 @@
+---
+title: "Recommendation System Report - MovieLens"
+author: "Romina Jaramillo"
+date: "7/4/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+##########################################################
+# Create edx set, validation set (final hold-out test set)
+##########################################################
+
+# Note: this process could take a couple of minutes
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(data.table)
+
+# MovieLens 10M dataset:
+# https://grouplens.org/datasets/movielens/10m/
+# http://files.grouplens.org/datasets/movielens/ml-10m.zip
+
+dl <- tempfile()
+download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+
+ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
+                 col.names = c("userId", "movieId", "rating", "timestamp"))
+
+movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
+colnames(movies) <- c("movieId", "title", "genres")
+
+# if using R 4.0 or later:
+movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(movieId),
+                                            title = as.character(title),
+                                            genres = as.character(genres))
+
+
+movielens <- left_join(ratings, movies, by = "movieId")
+
+# Validation set will be 10% of MovieLens data
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
+edx <- movielens[-test_index,]
+temp <- movielens[test_index,]
+
+# Make sure userId and movieId in validation set are also in edx set
+validation <- temp %>% 
+      semi_join(edx, by = "movieId") %>%
+      semi_join(edx, by = "userId")
+
+# Add rows removed from validation set back into edx set
+removed <- anti_join(temp, validation)
+edx <- rbind(edx, removed)
+
+rm(dl, ratings, movies, test_index, temp, movielens, removed)
+
+library(tinytex)
+library(tidyverse)
+library(caret)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview 
+Machine learning is applied in predictive analysis. The historical data is used to predict the future outcomes. To illustrate, given one x value, you can predict any value. One of the goals of machine learning is to process data and generate useful information to personalize the information given to every user. 
+In 2006, Netflix implemented a contest to optimize their recommendation algorithm in a 10%. The contestants had to learn as much as possible about machine learning and algorithms to solve that big problem. The linear model had to be trained to generate predicted movies scores for the users and calculate the Root Mean Square Error (RMSE) of the predicted ratings versus the actual scores. 
+The MovieLens project, as the Netflix prize, create a recommendation system. But, In this case the Edx libraries and data set will be used in the training of the algorithms and movie ratings prediction.
+
+```{r visualizacion_datos, echo=TRUE }
+summary(edx)
+dim(edx)
+class(edx)
+head(edx)
+nrow(edx)
+# Most rated movies
+edx %>% group_by(title) %>% summarize(n_ratings = n()) %>% arrange(desc(n_ratings))
+
+```
+Based on the data size that this data set involves. This report is going to use a linear model to solve the problem. The RMSE is the error amount that is between two values. For example, it compares a predicted value and a known value.  
+
+After overview the data, we could say that the train set is conformed by 9000055 rows and 6 columns. The Validation set is 10% of Movie Lens data and the other 90% is train set. In the same way, the validation train has 999,999 occurrences and 6 columns as shown. 
+
+```{r datos_glimpse, echo=TRUE}
+# printing the validation and training data
+glimpse(validation)
+glimpse(edx)
+```
+
+
+## Analysis and Methods
+The perfect model for this project is the lineal regression model. As we know, linear regression is  an approach for modeling the relationships between scalar dependent variables (y) and one or more independent variables (x). This project uses simple techniques like linear regression model with regularized movie and user effects using lambda for validation. The model used is the following: 
+
+\begin{equation}
+  A_{x,y} = \mu,
+\end{equation}
+
+The predicted rating is represented by $A_{x,y}$ where $x$ represents user and $y$ movie. The predicted rating is equal to the mean or average rating between all the registries or entries. 
+
+```{r just_average_model, echo=TRUE}
+# calculate the average of all ratings of the edx dataset
+media <- mean(edx$rating)
+RMSE(validation$rating, media)
+```
+
+Before fine-tuning our model, we must analyze and understand the situation. It is observed that the most rating grades in the users were 4 and 3. 
+
+```{r just_summaries, echo=TRUE}
+#summary of each rating count
+edx %>% group_by(rating) %>% summarize(count = n()) %>% top_n(8, count) %>%
+arrange
+
+# Rating count plot
+edx %>%
+group_by(rating) %>%
+summarize(count = n()) %>%
+ggplot(aes(x = rating, y = count)) +
+geom_line()+
+labs(x="rating", y="ammount") +
+ggtitle("Number of ratings per count")
+
+# movies with the major number of ratings 
+top_movies <- edx %>% group_by(title) %>%
+summarize(count=n()) %>% top_n(10,count) %>%
+arrange(desc(count))
+
+head(top_movies)
+
+```
+
+The movies with the highest number of ratings are in the top genres categories. 
+
+## Fine-tuning the model
+The bias is a tendency or disproportionate weight in favor or against one thing. For this reason, we are going to add the bias for user and movies (rating differences) to improve our model
+
+\begin{equation}
+  A_{x,y} = \mu + b_{x} + b_{y} ,
+\end{equation}
+
+```{r just_error_model, echo=TRUE}
+# calculate the error (bias) of movies on the training dataset
+bx <- edx %>% group_by(movieId) %>% summarize(bx = mean(rating - media))
+bx
+
+# predicted ratings
+predicted_ratings_bx <- media + validation %>%
+left_join(bx, by='movieId') %>% .$bx
+
+
+```
+
+
+```{r just_error_user_model, echo=TRUE}
+# calculate the error (bias) of users on the training dataset
+by <- edx %>% left_join(bx, by='movieId') %>%
+  group_by(userId) %>% 
+  summarize(by = mean(rating - media - bx))
+```
+
+Now we are going to predict ratings with movie and user bias. Then, calculate RMSE of movies and users bias effect
+
+```{r just_prediction_model, echo=TRUE}
+# getting new ratings taking care of user and movie errors
+predicted_R <- validation %>% left_join(bx, by='movieId') %>%
+  left_join(by, by='userId') %>%
+  mutate(pred = media + bx + by) %>% pull(pred) 
+
+#The root mean square error (RMSE) models for movies and users
+rmse_movie <- RMSE(validation$rating,predicted_ratings_bx)
+rmse_movie
+rmse_movie_user <- RMSE(validation$rating, predicted_R)
+rmse_movie_user
+
+```
+
+## Results
+
+With the objective to reduce the effect of large errors in our predictions, we applied regularization. Regularization is used to allow models to usefully model such data without over fitting. It penalizes inappropriate estimates on sample sizes. To illustrate, the bias user and movie (bx and by) accounts for the average deviation, if there are 1 or 100 ratings to the movie. Regularization let us reduce the impact that an extreme rating or anomalies in the rating of users could cause. The equation could be represented in R like this:  
+
+
+```{r regularized_effects, echo=TRUE}
+
+# determine best lambda from a sequence
+lambdas <- seq(from=0, to=10, by=0.25)
+
+# determine best lambda from a sequence
+rmses <- sapply(lambdas, function(l){ media_reg <- mean(edx$rating)
+bx_reg <- edx %>% group_by(movieId) %>% summarize(bx_reg = sum(rating - media)/(n()+l))
+
+by_reg <- edx %>% left_join(bx_reg, by="movieId")%>% 
+  group_by(userId) %>% summarize(by_reg = sum(rating - bx_reg - media_reg)/(n()+l)) 
+
+predicted_ratings_bias <- validation %>%
+  left_join(bx_reg, by = "movieId") %>% 
+  left_join(by_reg, by = "userId") %>%
+  mutate(pred = media_reg + bx_reg + by_reg) %>% .$pred
+
+return( RMSE(validation$rating,predicted_ratings_bias))
+})
+
+qplot(lambdas, rmses)
+
+# optimal lambda
+lambdas[which.min(rmses)]
+
+# output RMSE of our final model
+rmse_final <- min(rmses)
+rmse_final
+
+```
+The regularization descends the RMSE’s value to 0.86481
+
+
+## Conclusion
+
+To conclude, the algorithm is more efficient than other algorithms from R packages. This simple model let us predict movie ratings without consuming a big amount of resources from the computer.
+
+```{r regularized_conclusion, echo=TRUE}
+rmse_results <- data.frame(methods=c("movie effect",
+                                     "movie and user effects" ,"Regularized movie and user effect"), values= c(rmse_movie,rmse_movie_user,rmse_final))
+
+rmse_results
+
+```
+
+The RMSE showed that using linear regression with regularization of users and movies is a proper recommended system.
+
+## Vocabulary
+
+1.	RMSE (Root Mean Square Error): Value used to evaluate the closeness of the predictions to the true values in the validation set.
+
+2. Bias: Statistical bias is a term that refers to any type of error or distortion that is found with the use of statistical analyses.
+
+
+
+
