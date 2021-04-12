@@ -219,8 +219,8 @@ The regularization descends the RMSE’s value to 0.86481
 To conclude, the algorithm is more efficient than other algorithms from R packages. This simple model let us predict movie ratings without consuming a big amount of resources from the computer.
 
 ```{r regularized_conclusion, echo=TRUE}
-rmse_results <- data.frame(methods=c("movie effect",
-                                     "movie and user effects" ,"Regularized movie and user effect"), values= c(rmse_movie,rmse_movie_user,rmse_final))
+rmse_results <- data.frame(methods=c("Movie effect",
+                                     "Movie and user effects" ,"Regularized movie and user effect"), values= c(rmse_movie,rmse_movie_user,rmse_final))
 
 rmse_results
 
